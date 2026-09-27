@@ -11,6 +11,52 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: JAVA Install
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Check Java version
+        run: java --version
+
+      - name: Create JAR
+        run: mvn clean package
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+         context: .
+         push: true
+         tags: ${{secrets.DOCKERHUB_USERNAME}}/app-cicd:latest
+
+      - name: Execute remote SSH commands using password
+        uses: appleboy/ssh-action@v1
+        with:
+            host: ${{ secrets.HOST }}
+            username: ${{ secrets.USERNAME }}
+            password: ${{ secrets.PASSWORD }}
+            port: ${{ secrets.PORT }}
+            script: |
+              whoami
+              sudo apt update 
+              sudo apt install docker.io -y 
+              sudo systemctl start docker
+              sudo systemctl enable docker
+              sudo systemctl status docker
+              sudo usermod -aG docker $USER
+              sudo docker --version
+              sudo docker pull ${{secrets.DOCKERHUB_USERNAME}}/app-cicd:latest
+              sudo docker rm -f app-cicd || true
+              sudo docker run -d -p 8080:8080 --name app-cicd ${{secrets.DOCKERHUB_USERNAME}}/app-cicd:latest
+              sudo docker ps
+
